@@ -163,7 +163,7 @@ void ImageViewer::mousePressEvent(QMouseEvent *event)
             return;
         }
 
-        // Если не попали ни в вершину, ни в полигон — начинаем новый полигон
+        // Если не попали ни в вершину, ни в полигон — начинаем новый полигон либо добавляем вершину в начатый
         if (m_currentPolygon == -1){
             m_currentPolygon = m_polygons.size();
             m_polygons.append(QPolygon());
@@ -181,10 +181,6 @@ void ImageViewer::closePolygon(){
     if (m_currentPolygon < 0 && m_currentPolygon > m_polygons.size())
         return;
 
-    qDebug() << "end of poly";
-
-    // Завершить текущий полигон
-    // Замыкаем полигон, если нужно (QPolygon сам по себе замкнут при отрисовке)
     m_selectedPolygon = m_currentPolygon;
     m_currentPolygon = -1;
     update();
@@ -198,7 +194,6 @@ void ImageViewer::mouseMoveEvent(QMouseEvent *event)
     QPoint pos = event->pos();
 
     if (m_dragVertex != -1 && m_selectedPolygon != -1) {
-        //qDebug() << "start move vertex!";
         // Перемещение вершины выбранного полигона
         QPolygon &poly = m_polygons[m_selectedPolygon];
         if (m_dragVertex < poly.size()) {
@@ -208,7 +203,6 @@ void ImageViewer::mouseMoveEvent(QMouseEvent *event)
             update();
         }
     } else if (m_selectedPolygon != -1 && event->buttons() & Qt::LeftButton) {
-        qDebug() << "move selected poly";
         // Перемещение выбранного полигона целиком
         QPoint delta = pos - m_lastPos;
         QPolygon &poly = m_polygons[m_selectedPolygon];
