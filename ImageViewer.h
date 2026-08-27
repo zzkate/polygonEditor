@@ -23,8 +23,9 @@ protected:
 
 private:
     void loadFile();
-    int hitTestVertex(const QPoint &pos) const;
+    std::pair<int, int> hitTestVertex(const QPoint &pos) const;
     int hitTestPolygon(const QPoint &pos) const;
+    void closePolygon();
 
     QPushButton *m_loadButton;
     QImage m_image;

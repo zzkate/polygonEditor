@@ -21,6 +21,9 @@ ImageViewer::ImageViewer(QWidget *parent)
     layout->setSpacing(5);
 
     m_loadButton = new QPushButton(QStringLiteral("Загрузить изображение"), this);
+    m_loadButton->setDefault(false);
+    m_loadButton->setAutoDefault(false);
+    m_loadButton->setFocusPolicy(Qt::NoFocus);
     connect(m_loadButton, &QPushButton::clicked, this, &ImageViewer::loadFile);
     layout->addWidget(m_loadButton);
 
@@ -76,29 +79,53 @@ void ImageViewer::paintEvent(QPaintEvent *)
             continue;
 
         p.setPen(i == m_selectedPolygon ? QPen(Qt::red, 3) : QPen(Qt::blue, 2));
+        //p.setBrush(QBrush(Qt::green, Qt::SolidPattern));
         p.setBrush(QColor(0, 0, 255, 40));
         p.drawPolygon(poly);
 
         // Вершины
         p.setPen(Qt::black);
-        for (const QPoint &pt : poly) {
-            p.fillRect(pt.x() - 4, pt.y() - 4, 8, 8, Qt::yellow);
+        for (int j = 0; j < poly.size(); ++j) {
+            auto pt = poly[j];
+            bool isSelected = m_selectedPolygon == i && m_dragVertex == j;
+            p.fillRect(pt.x() - 4, pt.y() - 4, 8, 8, isSelected ? Qt::red : Qt::yellow);
             p.drawRect(pt.x() - 4, pt.y() - 4, 8, 8);
         }
     }
 
-    // Текущий рисуемый полигон
-    if (m_currentPolygon >= 0 && m_currentPolygon < m_polygons.size()) {
-        const QPolygon &poly = m_polygons[m_currentPolygon];
-        if (!poly.isEmpty()) {
-            p.setPen(QPen(Qt::darkGreen, 2, Qt::DashLine));
-            p.setBrush(Qt::NoBrush);
-            p.drawPolyline(poly);
-        }
-    }
-}
+    // {
+    //     p.setRenderHint(QPainter::Antialiasing); // Smooth edges
 
-int ImageViewer::hitTestVertex(const QPoint &pos) const
+    //     // 1. Define styling
+    //     p.setPen(QPen(Qt::black, 2));            // Border color & thickness
+    //     p.setBrush(QBrush(Qt::green, Qt::SolidPattern)); // Fill color & pattern
+
+    //     // 2. Define the polygon points
+    //     QPolygon polygon;
+    //     polygon << QPoint(50, 50)
+    //             << QPoint(150, 20)
+    //             << QPoint(250, 80)
+    //             << QPoint(180, 180)
+    //             << QPoint(80, 150);
+
+    //     // 3. Draw the polygon
+    //     p.drawPolygon(polygon);
+    // }
+
+//     // Текущий рисуемый полигон
+//     if (m_currentPolygon >= 0 && m_currentPolygon < m_polygons.size()) {
+//         const QPolygon &poly = m_polygons[m_currentPolygon];
+//         if (!poly.isEmpty()) {
+//             p.setPen(QPen(Qt::darkGreen, 2, Qt::DashLine));
+//             // QColor color(255, 0, 0); // Red
+//             // color.setAlpha(128);
+//             p.setBrush(Qt::NoBrush);
+//             p.drawPolyline(poly);
+//         }
+//     }
+ }
+
+std::pair<int, int> ImageViewer::hitTestVertex(const QPoint &pos) const
 {
     const int hitRadius = 6;
     for (int i = 0; i < m_polygons.size(); ++i) {
@@ -106,12 +133,12 @@ int ImageViewer::hitTestVertex(const QPoint &pos) const
         for (int v = 0; v < poly.size(); ++v) {
             QPoint pt = poly[v];
             if (QLineF(pt, pos).length() <= hitRadius) {
-                return v; // упрощённо: возвращаем индекс вершины в первом найденном полигоне
-                // для более точного нужно хранить и индекс полигона
+                return std::make_pair(i, v);
             }
         }
     }
-    return -1;
+    //qDebug() << "no vertex under cursor";
+    return std::make_pair(-1, -1);
 }
 
 int ImageViewer::hitTestPolygon(const QPoint &pos) const
@@ -135,12 +162,11 @@ void ImageViewer::mousePressEvent(QMouseEvent *event)
 
     if (event->button() == Qt::LeftButton) {
         // Сначала проверяем, попали ли в вершину существующего полигона
-        int v = hitTestVertex(pos);
-        if (v != -1) {
+        auto v = hitTestVertex(pos);
+        if (v.first != -1 && v.second != -1) {
             // Начинаем перетаскивание вершины
-            // Для простоты считаем, что вершина принадлежит первому найденному полигону
-            // В реальном проекте нужно хранить (polyIndex, vertexIndex)
-            m_dragVertex = v;
+            m_selectedPolygon = v.first;
+            m_dragVertex = v.second;
             m_lastPos = pos;
             return;
         }
@@ -156,20 +182,30 @@ void ImageViewer::mousePressEvent(QMouseEvent *event)
         }
 
         // Если не попали ни в вершину, ни в полигон — начинаем новый полигон
-        m_currentPolygon = m_polygons.size();
-        m_polygons.append(QPolygon());
-        m_polygons.last().append(pos);
+        if (m_currentPolygon == -1){
+            m_currentPolygon = m_polygons.size();
+            m_polygons.append(QPolygon());
+        }
         m_selectedPolygon = -1;
         m_dragVertex = -1;
+        m_polygons.last().append(pos);
         update();
     } else if (event->button() == Qt::RightButton) {
-        // Завершить текущий полигон
-        if (m_currentPolygon >= 0 && m_currentPolygon < m_polygons.size()) {
-            // Замыкаем полигон, если нужно (QPolygon сам по себе замкнут при отрисовке)
-            m_currentPolygon = -1;
-            update();
-        }
+        closePolygon();
     }
+}
+
+void ImageViewer::closePolygon(){
+    if (m_currentPolygon < 0 && m_currentPolygon > m_polygons.size())
+        return;
+
+    qDebug() << "end of poly";
+
+    // Завершить текущий полигон
+    // Замыкаем полигон, если нужно (QPolygon сам по себе замкнут при отрисовке)
+    m_selectedPolygon = m_currentPolygon;
+    m_currentPolygon = -1;
+    update();
 }
 
 void ImageViewer::mouseMoveEvent(QMouseEvent *event)
@@ -180,6 +216,7 @@ void ImageViewer::mouseMoveEvent(QMouseEvent *event)
     QPoint pos = event->pos();
 
     if (m_dragVertex != -1 && m_selectedPolygon != -1) {
+        //qDebug() << "start move vertex!";
         // Перемещение вершины выбранного полигона
         QPolygon &poly = m_polygons[m_selectedPolygon];
         if (m_dragVertex < poly.size()) {
@@ -189,6 +226,7 @@ void ImageViewer::mouseMoveEvent(QMouseEvent *event)
             update();
         }
     } else if (m_selectedPolygon != -1 && event->buttons() & Qt::LeftButton) {
+        qDebug() << "move selected poly";
         // Перемещение выбранного полигона целиком
         QPoint delta = pos - m_lastPos;
         QPolygon &poly = m_polygons[m_selectedPolygon];
@@ -214,11 +252,7 @@ void ImageViewer::mouseReleaseEvent(QMouseEvent *)
 void ImageViewer::keyPressEvent(QKeyEvent *event)
 {
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
-        // Завершить текущий полигон
-        if (m_currentPolygon >= 0 && m_currentPolygon < m_polygons.size()) {
-            m_currentPolygon = -1;
-            update();
-        }
+        closePolygon();
     } else if (event->key() == Qt::Key_Delete) {
         // Удалить выбранный полигон
         if (m_selectedPolygon >= 0 && m_selectedPolygon < m_polygons.size()) {
