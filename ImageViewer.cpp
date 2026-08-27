@@ -5,22 +5,27 @@
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <QMenu>
+#include <QVBoxLayout>
 
 ImageViewer::ImageViewer(QWidget *parent)
     : QWidget(parent)
+    , m_loadButton(nullptr)
     , m_selectedPolygon(-1)
     , m_dragVertex(-1)
     , m_currentPolygon(-1)
 {
     setWindowTitle(QStringLiteral("Qt5 Image + Polygons"));
-    // Контекстное меню для загрузки изображения
-    setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(this, &QWidget::customContextMenuRequested,
-            this, [this](const QPoint &pos) {
-        QMenu menu(this);
-        menu.addAction(QStringLiteral("Загрузить изображение"), this, &ImageViewer::loadFile);
-        menu.exec(mapToGlobal(pos));
-    });
+
+    auto layout = new QVBoxLayout(this);
+    layout->setContentsMargins(5, 5, 5, 5);
+    layout->setSpacing(5);
+
+    m_loadButton = new QPushButton(QStringLiteral("Загрузить изображение"), this);
+    connect(m_loadButton, &QPushButton::clicked, this, &ImageViewer::loadFile);
+    layout->addWidget(m_loadButton);
+
+    layout->addStretch();
+    setLayout(layout);
 }
 
 void ImageViewer::loadFile()

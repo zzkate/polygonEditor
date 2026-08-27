@@ -6,6 +6,7 @@
 #include <QPolygon>
 #include <QVector>
 #include <QPoint>
+#include <QPushButton>
 
 class ImageViewer : public QWidget
 {
@@ -25,6 +26,7 @@ private:
     int hitTestVertex(const QPoint &pos) const;
     int hitTestPolygon(const QPoint &pos) const;
 
+    QPushButton *m_loadButton;
     QImage m_image;
     QVector<QPolygon> m_polygons;
     int m_selectedPolygon;       // индекс выбранного полигона, -1 если нет
