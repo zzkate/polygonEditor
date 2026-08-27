@@ -79,8 +79,9 @@ void ImageViewer::paintEvent(QPaintEvent *)
             continue;
 
         p.setPen(i == m_selectedPolygon ? QPen(Qt::red, 3) : QPen(Qt::blue, 2));
-        //p.setBrush(QBrush(Qt::green, Qt::SolidPattern));
-        p.setBrush(QColor(0, 0, 255, 40));
+        //p.setBrush(QColor(0, 0, 255, 40));
+        QImage scaledImage = m_image.scaled(rect().size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        p.setBrush(QBrush(scaledImage));
         p.drawPolygon(poly);
 
         // Вершины
@@ -92,25 +93,6 @@ void ImageViewer::paintEvent(QPaintEvent *)
             p.drawRect(pt.x() - 4, pt.y() - 4, 8, 8);
         }
     }
-
-    // {
-    //     p.setRenderHint(QPainter::Antialiasing); // Smooth edges
-
-    //     // 1. Define styling
-    //     p.setPen(QPen(Qt::black, 2));            // Border color & thickness
-    //     p.setBrush(QBrush(Qt::green, Qt::SolidPattern)); // Fill color & pattern
-
-    //     // 2. Define the polygon points
-    //     QPolygon polygon;
-    //     polygon << QPoint(50, 50)
-    //             << QPoint(150, 20)
-    //             << QPoint(250, 80)
-    //             << QPoint(180, 180)
-    //             << QPoint(80, 150);
-
-    //     // 3. Draw the polygon
-    //     p.drawPolygon(polygon);
-    // }
 
 //     // Текущий рисуемый полигон
 //     if (m_currentPolygon >= 0 && m_currentPolygon < m_polygons.size()) {
