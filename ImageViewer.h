@@ -8,6 +8,13 @@
 #include <QPoint>
 #include <QPushButton>
 
+struct Poly{
+    QPolygon p;
+    QPoint moveV;
+    std::shared_ptr<QPixmap> pix = nullptr;
+    QImage img;
+};
+
 class ImageViewer : public QWidget
 {
     Q_OBJECT
@@ -22,14 +29,28 @@ protected:
     void keyPressEvent(QKeyEvent *event) override;
 
 private:
+    void reset();
     void loadFile();
     std::pair<int, int> hitTestVertex(const QPoint &pos) const;
     int hitTestPolygon(const QPoint &pos) const;
     void closePolygon();
 
-    QPushButton *m_loadButton;
+    void drawCurrentPolygon();
+    bool drawImage(QPainter& p);
+    void drawPolygons(QPainter& p);
+
+    void moveVertex(const QPoint& pos);
+    void movePolygon(const QPoint& pos);
+
+    void dropPolygon();
+
+    bool isCurrentPolygonCorrect() const;
+    bool isSelectedPolygonCorrect() const;
+
+    QPushButton* m_loadButton;
     QImage m_image;
-    QVector<QPolygon> m_polygons;
+    //QVector<QPolygon> m_polygons;
+    QVector<Poly> m_polygons;
     int m_selectedPolygon;       // индекс выбранного полигона, -1 если нет
     int m_dragVertex;            // индекс перетаскиваемой вершины, -1 если нет
     int m_currentPolygon;        // индекс рисуемого полигона, -1 если не рисуем

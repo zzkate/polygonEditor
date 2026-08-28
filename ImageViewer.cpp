@@ -6,6 +6,11 @@
 #include <QKeyEvent>
 #include <QMenu>
 #include <QVBoxLayout>
+#include <QPixmap>
+
+constexpr auto ptWidth = 4, ptHeight = 4;
+constexpr auto contentMargin = 5;
+constexpr auto space = 5;
 
 ImageViewer::ImageViewer(QWidget *parent)
     : QWidget(parent)
@@ -17,8 +22,8 @@ ImageViewer::ImageViewer(QWidget *parent)
     setWindowTitle(QStringLiteral("Qt5 Image + Polygons"));
 
     auto layout = new QVBoxLayout(this);
-    layout->setContentsMargins(5, 5, 5, 5);
-    layout->setSpacing(5);
+    layout->setContentsMargins(contentMargin, contentMargin, contentMargin, contentMargin);
+    layout->setSpacing(space);
 
     m_loadButton = new QPushButton(QStringLiteral("Загрузить изображение"), this);
     m_loadButton->setDefault(false);
@@ -40,93 +45,116 @@ void ImageViewer::loadFile()
         QStringLiteral("Images (*.png *.xpm *.jpg *.bmp *.gif)"));
     if (!path.isEmpty()) {
         m_image = QImage(path);
-        m_polygons.clear();
-        m_selectedPolygon = -1;
-        m_currentPolygon = -1;
-        m_dragVertex = -1;
+        reset();
         update();
     }
+}
+
+void ImageViewer::reset(){
+    m_polygons.clear();
+    m_selectedPolygon = -1;
+    m_currentPolygon = -1;
+    m_dragVertex = -1;
 }
 
 void ImageViewer::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
-
-    // Фон
     p.fillRect(rect(), Qt::white);
 
-    // Изображение
-    if (!m_image.isNull()) {
-        QRect r = rect();
-        // Центрируем изображение, сохраняя пропорции
-        QSize scaled = m_image.size().scaled(r.size(), Qt::KeepAspectRatio);
-        QRect imgRect(QPoint((r.width() - scaled.width()) / 2,
-                             (r.height() - scaled.height()) / 2),
-                      scaled);
-        p.drawImage(imgRect, m_image);
+    if (!drawImage(p))
+        return;
 
-        // Сохраняем смещение и масштаб для корректной работы с координатами
-        // Для простоты в этом примере считаем, что работаем в координатах виджета,
-        // а изображение просто нарисовано внутри.
-        // Если нужно точно по изображению — можно добавить transform.
-    }
+    drawCurrentPolygon();
+    drawPolygons(p);
+}
 
-    // Полигоны
+void ImageViewer::drawPolygons(QPainter& p){
     for (int i = 0; i < m_polygons.size(); ++i) {
-        const QPolygon &poly = m_polygons[i];
-        if (poly.isEmpty())
+        const auto& poly = m_polygons[i];
+        if (poly.p.isEmpty())
             continue;
 
         p.setPen(i == m_selectedPolygon ? QPen(Qt::red, 3) : QPen(Qt::blue, 2));
+        assert(poly.pix.get() != nullptr);
         //p.setBrush(QColor(0, 0, 255, 40));
-        QImage scaledImage = m_image.scaled(rect().size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-        p.setBrush(QBrush(scaledImage));
-        p.drawPolygon(poly);
+        //QImage scaledImage = m_image.scaled(rect().size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        //p.setBrush(poly.pix.get());//QBrush(scaledImage));
+        QBrush brush;
+        brush.setTexture(*poly.pix.get());
+        p.setBrush(brush);
+        p.drawPolygon(poly.p);
 
         // Вершины
         p.setPen(Qt::black);
-        for (int j = 0; j < poly.size(); ++j) {
-            auto pt = poly[j];
+        for (int j = 0; j < poly.p.size(); ++j) {
+            auto pt = poly.p[j];
             bool isSelected = m_selectedPolygon == i && m_dragVertex == j;
-            p.fillRect(pt.x() - 4, pt.y() - 4, 8, 8, isSelected ? Qt::red : Qt::yellow);
-            p.drawRect(pt.x() - 4, pt.y() - 4, 8, 8);
+            const auto r = QRect(pt.x() - ptWidth, pt.y() - ptHeight, 2 * ptWidth, 2 * ptHeight);
+            p.fillRect(r, isSelected ? Qt::red : Qt::yellow);
+            p.drawRect(r);
         }
     }
+}
 
-//     // Текущий рисуемый полигон
-//     if (m_currentPolygon >= 0 && m_currentPolygon < m_polygons.size()) {
-//         const QPolygon &poly = m_polygons[m_currentPolygon];
-//         if (!poly.isEmpty()) {
-//             p.setPen(QPen(Qt::darkGreen, 2, Qt::DashLine));
-//             // QColor color(255, 0, 0); // Red
-//             // color.setAlpha(128);
-//             p.setBrush(Qt::NoBrush);
-//             p.drawPolyline(poly);
-//         }
-//     }
- }
+bool ImageViewer::drawImage(QPainter& p){
+    if (m_image.isNull())
+        return false;
+    const auto& r = rect();
+    // Центрируем изображение, сохраняя пропорции
+    const auto scaled = m_image.size().scaled(r.size(), Qt::KeepAspectRatio);
+    const QRect imgRect(QPoint((r.width() - scaled.width()) / 2,
+                         (r.height() - scaled.height()) / 2),
+                  scaled);
+    p.drawImage(imgRect, m_image);
+    return true;
+
+    // Сохраняем смещение и масштаб для корректной работы с координатами
+    // Для простоты в этом примере считаем, что работаем в координатах виджета,
+    // а изображение просто нарисовано внутри.
+    // Если нужно точно по изображению — можно добавить transform.
+}
+
+void ImageViewer::drawCurrentPolygon() {
+    if (!isCurrentPolygonCorrect())
+        return;
+
+    auto& poly = m_polygons[m_currentPolygon];
+    if (!poly.p.isEmpty()) {
+        QImage scaledImage = m_image.scaled(rect().size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+        poly.pix = std::make_shared<QPixmap>(rect().size());
+        QPainter p(poly.pix.get());
+        p.setPen(QPen(Qt::darkGreen, 2, Qt::DashLine));
+        // QColor color(255, 0, 0); // Red
+        // color.setAlpha(128);
+        // p.setBrush(Qt::NoBrush);
+        // p.drawPolyline(poly);
+        //poly.img = scaledImage;
+        p.setBrush(QBrush(scaledImage));
+        p.drawPolygon(poly.p);
+    }
+}
 
 std::pair<int, int> ImageViewer::hitTestVertex(const QPoint &pos) const
 {
     const int hitRadius = 6;
     for (int i = 0; i < m_polygons.size(); ++i) {
-        const QPolygon &poly = m_polygons[i];
-        for (int v = 0; v < poly.size(); ++v) {
-            QPoint pt = poly[v];
+        auto& poly = m_polygons[i];
+        for (int v = 0; v < poly.p.size(); ++v) {
+            QPoint pt = poly.p[v];
             if (QLineF(pt, pos).length() <= hitRadius) {
                 return std::make_pair(i, v);
             }
         }
     }
-    //qDebug() << "no vertex under cursor";
     return std::make_pair(-1, -1);
 }
 
 int ImageViewer::hitTestPolygon(const QPoint &pos) const
 {
-    for (int i = m_polygons.size() - 1; i >= 0; --i) {
-        const QPolygon &poly = m_polygons[i];
+    for (int i = 0; i < m_polygons.size(); ++i) {
+        const auto& poly = m_polygons[i].p;
         if (poly.isEmpty())
             continue;
         if (poly.containsPoint(pos, Qt::OddEvenFill))
@@ -164,21 +192,25 @@ void ImageViewer::mousePressEvent(QMouseEvent *event)
         }
 
         // Если не попали ни в вершину, ни в полигон — начинаем новый полигон либо добавляем вершину в начатый
-        if (m_currentPolygon == -1){
+        if (m_currentPolygon == -1 || m_polygons.size() == 0){
             m_currentPolygon = m_polygons.size();
-            m_polygons.append(QPolygon());
+            m_polygons.append(Poly());
         }
         m_selectedPolygon = -1;
         m_dragVertex = -1;
-        m_polygons.last().append(pos);
+        m_polygons.last().p.append(pos);
         update();
     } else if (event->button() == Qt::RightButton) {
         closePolygon();
     }
 }
 
+bool ImageViewer::isCurrentPolygonCorrect() const {
+    return (m_currentPolygon >= 0) && (m_currentPolygon < m_polygons.size());
+}
+
 void ImageViewer::closePolygon(){
-    if (m_currentPolygon < 0 && m_currentPolygon > m_polygons.size())
+    if (!isCurrentPolygonCorrect())
         return;
 
     m_selectedPolygon = m_currentPolygon;
@@ -191,25 +223,10 @@ void ImageViewer::mouseMoveEvent(QMouseEvent *event)
     if (m_image.isNull())
         return;
 
-    QPoint pos = event->pos();
-
-    if (m_dragVertex != -1 && m_selectedPolygon != -1) {
-        // Перемещение вершины выбранного полигона
-        QPolygon &poly = m_polygons[m_selectedPolygon];
-        if (m_dragVertex < poly.size()) {
-            QPoint delta = pos - m_lastPos;
-            poly[m_dragVertex] += delta;
-            m_lastPos = pos;
-            update();
-        }
-    } else if (m_selectedPolygon != -1 && event->buttons() & Qt::LeftButton) {
-        // Перемещение выбранного полигона целиком
-        QPoint delta = pos - m_lastPos;
-        QPolygon &poly = m_polygons[m_selectedPolygon];
-        for (int i = 0; i < poly.size(); ++i)
-            poly[i] += delta;
-        m_lastPos = pos;
-        update();
+    if (event->buttons() & Qt::LeftButton) {
+        const auto& pos = event->pos();
+        moveVertex(pos);
+        movePolygon(pos);
     } else if (m_currentPolygon >= 0 && m_currentPolygon < m_polygons.size()) {
         // Добавление вершин в текущий полигон при движении с зажатой ЛКМ
         // В простом варианте добавляем вершину только по клику, здесь можно
@@ -218,11 +235,35 @@ void ImageViewer::mouseMoveEvent(QMouseEvent *event)
     }
 }
 
+void ImageViewer::moveVertex(const QPoint& pos) {
+    if (m_dragVertex == -1 || !isSelectedPolygonCorrect())
+        return;
+
+    auto& poly = m_polygons[m_selectedPolygon];
+    if (m_dragVertex < poly.p.size()) {
+        QPoint delta = pos - m_lastPos;
+        poly.p[m_dragVertex] += delta;
+        m_lastPos = pos;
+        update();
+    }
+}
+
+void ImageViewer::movePolygon(const QPoint& pos) {
+    if (!isSelectedPolygonCorrect())
+        return;
+
+    QPoint delta = pos - m_lastPos;
+    auto& poly = m_polygons[m_selectedPolygon];
+    for (int i = 0; i < poly.p.size(); ++i)
+        poly.p[i] += delta;
+    m_lastPos = pos;
+    update();
+}
+
 void ImageViewer::mouseReleaseEvent(QMouseEvent *)
 {
-    if (m_dragVertex != -1) {
+    if (m_dragVertex != -1)
         m_dragVertex = -1;
-    }
 }
 
 void ImageViewer::keyPressEvent(QKeyEvent *event)
@@ -230,12 +271,20 @@ void ImageViewer::keyPressEvent(QKeyEvent *event)
     if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
         closePolygon();
     } else if (event->key() == Qt::Key_Delete) {
-        // Удалить выбранный полигон
-        if (m_selectedPolygon >= 0 && m_selectedPolygon < m_polygons.size()) {
-            m_polygons.remove(m_selectedPolygon);
-            m_selectedPolygon = -1;
-            update();
-        }
+        dropPolygon();
     }
     QWidget::keyPressEvent(event);
+}
+
+bool ImageViewer::isSelectedPolygonCorrect() const {
+    return (m_selectedPolygon >= 0) && (m_selectedPolygon < m_polygons.size());
+}
+
+void ImageViewer::dropPolygon(){
+    if (!isSelectedPolygonCorrect())
+        return;
+    m_polygons.remove(m_selectedPolygon);
+    m_selectedPolygon = -1;
+    m_currentPolygon = -1;
+    update();
 }
