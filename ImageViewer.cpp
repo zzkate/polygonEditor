@@ -76,21 +76,21 @@ void ImageViewer::drawPolygons(QPainter& p){
         if (poly.p.isEmpty())
             continue;
 
-        // draw holes
+        // draw holes on original image
         p.setBrush(Qt::white);
-        //p.drawPolygon(poly.pStart);
-        p.drawPolygon(poly.p);//.translated(poly.moveV));
+        p.drawPolygon(poly.p);
 
-
+        // draw moved poly with image puzzle from original
         p.setPen(i == m_selectedPolygon ? QPen(Qt::red, 3) : QPen(Qt::blue, 2));
         assert(poly.pix.get() != nullptr);
         QBrush brush;
         brush.setTexture(*poly.pix.get());
+        QTransform transform = QTransform::fromTranslate(poly.moveV.x(), poly.moveV.y());
+        brush.setTransform(transform);
         p.setBrush(brush);
-        //poly.p.translate(poly.moveV.x(), poly.moveV.y());
         p.drawPolygon(poly.p.translated(poly.moveV));
 
-        // Вершины
+        // draw vertexes on original poly
         p.setPen(Qt::black);
         for (int j = 0; j < poly.p.size(); ++j) {
             auto pt = poly.p[j];
@@ -123,18 +123,24 @@ void ImageViewer::drawCurrentPolygon() {
     if (poly.p.isEmpty())
         return;
 
-    QImage scaledImage = m_image.scaled(rect().size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    //QImage scaledImage = m_image.scaled(rect().size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
     const auto& r = rect();
     const auto scaled = m_image.size().scaled(r.size(), Qt::KeepAspectRatio);
     const QRect imgRect(QPoint((r.width() - scaled.width()) / 2,
                                (r.height() - scaled.height()) / 2),
                         scaled);
+    QImage scaledImage = m_image.scaled(imgRect.size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 
     poly.pix = std::make_shared<QPixmap>(imgRect.size());
     QPainter p(poly.pix.get());
     p.setPen(QPen(Qt::darkGreen, 2, Qt::DashLine));
-    p.setBrush(QBrush(scaledImage));
+    QBrush brush(scaledImage);
+    QTransform transform = QTransform::fromTranslate((r.width() - scaled.width()) / 2,
+                                                            (r.height() - scaled.height()) / 2);
+    brush.setTransform(transform);
+    p.setBrush(brush);
     p.drawPolygon(poly.p);
+    poly.pix->save("out.png");
 }
 
 std::pair<int, int> ImageViewer::hitTestVertex(const QPoint &pos) const
