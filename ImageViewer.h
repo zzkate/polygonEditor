@@ -9,10 +9,10 @@
 #include <QPushButton>
 
 struct Poly{
+    //QPolygon pStart;
     QPolygon p;
     QPoint moveV;
     std::shared_ptr<QPixmap> pix = nullptr;
-    QImage img;
 };
 
 class ImageViewer : public QWidget
@@ -39,13 +39,17 @@ private:
     bool drawImage(QPainter& p);
     void drawPolygons(QPainter& p);
 
+    bool isVertexSelected(const QPoint& pos);
+    bool isPolygonSelected(const QPoint& pos);
+    void processCurrentPolygon(const QPoint& pos);
+
     void moveVertex(const QPoint& pos);
     void movePolygon(const QPoint& pos);
 
     void dropPolygon();
 
-    bool isCurrentPolygonCorrect() const;
-    bool isSelectedPolygonCorrect() const;
+    bool isCurrentPolygonValid() const;
+    bool isSelectedPolygonValid() const;
 
     QPushButton* m_loadButton;
     QImage m_image;

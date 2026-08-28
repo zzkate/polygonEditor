@@ -72,19 +72,23 @@ void ImageViewer::paintEvent(QPaintEvent *)
 
 void ImageViewer::drawPolygons(QPainter& p){
     for (int i = 0; i < m_polygons.size(); ++i) {
-        const auto& poly = m_polygons[i];
+        auto& poly = m_polygons[i];
         if (poly.p.isEmpty())
             continue;
 
+        // draw holes
+        p.setBrush(Qt::white);
+        //p.drawPolygon(poly.pStart);
+        p.drawPolygon(poly.p);//.translated(poly.moveV));
+
+
         p.setPen(i == m_selectedPolygon ? QPen(Qt::red, 3) : QPen(Qt::blue, 2));
         assert(poly.pix.get() != nullptr);
-        //p.setBrush(QColor(0, 0, 255, 40));
-        //QImage scaledImage = m_image.scaled(rect().size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-        //p.setBrush(poly.pix.get());//QBrush(scaledImage));
         QBrush brush;
         brush.setTexture(*poly.pix.get());
         p.setBrush(brush);
-        p.drawPolygon(poly.p);
+        //poly.p.translate(poly.moveV.x(), poly.moveV.y());
+        p.drawPolygon(poly.p.translated(poly.moveV));
 
         // Вершины
         p.setPen(Qt::black);
@@ -109,37 +113,35 @@ bool ImageViewer::drawImage(QPainter& p){
                   scaled);
     p.drawImage(imgRect, m_image);
     return true;
-
-    // Сохраняем смещение и масштаб для корректной работы с координатами
-    // Для простоты в этом примере считаем, что работаем в координатах виджета,
-    // а изображение просто нарисовано внутри.
-    // Если нужно точно по изображению — можно добавить transform.
 }
 
 void ImageViewer::drawCurrentPolygon() {
-    if (!isCurrentPolygonCorrect())
+    if (!isCurrentPolygonValid())
         return;
 
     auto& poly = m_polygons[m_currentPolygon];
-    if (!poly.p.isEmpty()) {
-        QImage scaledImage = m_image.scaled(rect().size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
-        poly.pix = std::make_shared<QPixmap>(rect().size());
-        QPainter p(poly.pix.get());
-        p.setPen(QPen(Qt::darkGreen, 2, Qt::DashLine));
-        // QColor color(255, 0, 0); // Red
-        // color.setAlpha(128);
-        // p.setBrush(Qt::NoBrush);
-        // p.drawPolyline(poly);
-        //poly.img = scaledImage;
-        p.setBrush(QBrush(scaledImage));
-        p.drawPolygon(poly.p);
-    }
+    if (poly.p.isEmpty())
+        return;
+
+    QImage scaledImage = m_image.scaled(rect().size(), Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
+    const auto& r = rect();
+    const auto scaled = m_image.size().scaled(r.size(), Qt::KeepAspectRatio);
+    const QRect imgRect(QPoint((r.width() - scaled.width()) / 2,
+                               (r.height() - scaled.height()) / 2),
+                        scaled);
+
+    poly.pix = std::make_shared<QPixmap>(imgRect.size());
+    QPainter p(poly.pix.get());
+    p.setPen(QPen(Qt::darkGreen, 2, Qt::DashLine));
+    p.setBrush(QBrush(scaledImage));
+    p.drawPolygon(poly.p);
 }
 
 std::pair<int, int> ImageViewer::hitTestVertex(const QPoint &pos) const
 {
     const int hitRadius = 6;
     for (int i = 0; i < m_polygons.size(); ++i) {
+        //todo edit vertexes on translated poly or origial???
         auto& poly = m_polygons[i];
         for (int v = 0; v < poly.p.size(); ++v) {
             QPoint pt = poly.p[v];
@@ -154,7 +156,7 @@ std::pair<int, int> ImageViewer::hitTestVertex(const QPoint &pos) const
 int ImageViewer::hitTestPolygon(const QPoint &pos) const
 {
     for (int i = 0; i < m_polygons.size(); ++i) {
-        const auto& poly = m_polygons[i].p;
+        const auto& poly = m_polygons[i].p.translated(m_polygons[i].moveV);
         if (poly.isEmpty())
             continue;
         if (poly.containsPoint(pos, Qt::OddEvenFill))
@@ -163,54 +165,60 @@ int ImageViewer::hitTestPolygon(const QPoint &pos) const
     return -1;
 }
 
+bool ImageViewer::isVertexSelected(const QPoint& pos) {
+    const auto& v = hitTestVertex(pos);
+    if (v.first == -1 || v.second == -1)
+        return false;
+    m_selectedPolygon = v.first;
+    m_dragVertex = v.second;
+    m_lastPos = pos;
+    return true;
+}
+
+bool ImageViewer::isPolygonSelected(const QPoint& pos) {
+    const auto& polyIdx = hitTestPolygon(pos);
+    if (polyIdx == -1)
+        return false;
+    m_selectedPolygon = polyIdx;
+    m_dragVertex = -1;
+    m_lastPos = pos;
+    return true;
+}
+
 void ImageViewer::mousePressEvent(QMouseEvent *event)
 {
     if (m_image.isNull())
         return;
 
-    QPoint pos = event->pos();
-
+    const auto& pos = event->pos();
     if (event->button() == Qt::LeftButton) {
-        // Сначала проверяем, попали ли в вершину существующего полигона
-        auto v = hitTestVertex(pos);
-        if (v.first != -1 && v.second != -1) {
-            // Начинаем перетаскивание вершины
-            m_selectedPolygon = v.first;
-            m_dragVertex = v.second;
-            m_lastPos = pos;
-            return;
-        }
-
-        // Затем проверяем, попали ли внутрь полигона -> перемещение полигона
-        int polyIdx = hitTestPolygon(pos);
-        if (polyIdx != -1) {
-            m_selectedPolygon = polyIdx;
-            m_dragVertex = -1;
-            m_lastPos = pos;
-            update();
-            return;
-        }
-
-        // Если не попали ни в вершину, ни в полигон — начинаем новый полигон либо добавляем вершину в начатый
-        if (m_currentPolygon == -1 || m_polygons.size() == 0){
-            m_currentPolygon = m_polygons.size();
-            m_polygons.append(Poly());
-        }
-        m_selectedPolygon = -1;
-        m_dragVertex = -1;
-        m_polygons.last().p.append(pos);
+        if (!isVertexSelected(pos))
+            if (!isPolygonSelected(pos))
+                processCurrentPolygon(pos);
         update();
+
     } else if (event->button() == Qt::RightButton) {
         closePolygon();
     }
 }
 
-bool ImageViewer::isCurrentPolygonCorrect() const {
+void ImageViewer::processCurrentPolygon(const QPoint& pos) {
+    if (m_currentPolygon == -1 || m_polygons.size() == 0){
+        m_currentPolygon = m_polygons.size();
+        m_polygons.append(Poly());
+    }
+    m_selectedPolygon = -1;
+    m_dragVertex = -1;
+    m_polygons.last().p.append(pos);
+    //m_polygons.last().pStart.append(pos);
+}
+
+bool ImageViewer::isCurrentPolygonValid() const {
     return (m_currentPolygon >= 0) && (m_currentPolygon < m_polygons.size());
 }
 
 void ImageViewer::closePolygon(){
-    if (!isCurrentPolygonCorrect())
+    if (!isCurrentPolygonValid())
         return;
 
     m_selectedPolygon = m_currentPolygon;
@@ -236,7 +244,7 @@ void ImageViewer::mouseMoveEvent(QMouseEvent *event)
 }
 
 void ImageViewer::moveVertex(const QPoint& pos) {
-    if (m_dragVertex == -1 || !isSelectedPolygonCorrect())
+    if (m_dragVertex == -1 || !isSelectedPolygonValid())
         return;
 
     auto& poly = m_polygons[m_selectedPolygon];
@@ -244,18 +252,20 @@ void ImageViewer::moveVertex(const QPoint& pos) {
         QPoint delta = pos - m_lastPos;
         poly.p[m_dragVertex] += delta;
         m_lastPos = pos;
+        // reset poly pixmap
+        //poly.pStart = poly.p;
         update();
     }
 }
 
 void ImageViewer::movePolygon(const QPoint& pos) {
-    if (!isSelectedPolygonCorrect())
+    if (!isSelectedPolygonValid())
         return;
 
     QPoint delta = pos - m_lastPos;
     auto& poly = m_polygons[m_selectedPolygon];
-    for (int i = 0; i < poly.p.size(); ++i)
-        poly.p[i] += delta;
+    poly.moveV += delta;
+    //poly.p.translate(delta.x(), delta.y());
     m_lastPos = pos;
     update();
 }
@@ -276,12 +286,12 @@ void ImageViewer::keyPressEvent(QKeyEvent *event)
     QWidget::keyPressEvent(event);
 }
 
-bool ImageViewer::isSelectedPolygonCorrect() const {
+bool ImageViewer::isSelectedPolygonValid() const {
     return (m_selectedPolygon >= 0) && (m_selectedPolygon < m_polygons.size());
 }
 
 void ImageViewer::dropPolygon(){
-    if (!isSelectedPolygonCorrect())
+    if (!isSelectedPolygonValid())
         return;
     m_polygons.remove(m_selectedPolygon);
     m_selectedPolygon = -1;
